@@ -311,6 +311,11 @@ float* forward(Transformer* transformer, int token, int pos) {
             float fcr = cosf(val);
             float fci = sinf(val);
             int rotn = i < kv_dim ? 2 : 1; // how many vectors? 2 = q & k, 1 = q only
+
+
+            if (i == 0 && l == 0) {
+                printf("rotnb %d %f %f", kv_dim, s->q[0], s->k[10]);
+            }
             for (int v = 0; v < rotn; v++) {
                 float* vec = v == 0 ? s->q : s->k; // the vector to rotate (query or key)
                 float v0 = vec[i];
@@ -318,7 +323,12 @@ float* forward(Transformer* transformer, int token, int pos) {
                 vec[i]   = v0 * fcr - v1 * fci;     // 通过旋转q 、 k 将位置信息嵌入，具体原理不太懂
                 vec[i+1] = v0 * fci + v1 * fcr;
             }
+
+            if (i == 0 && l == 0) {
+                printf("rotn %d %f %f", kv_dim, s->q[0], s->k[10]);
+            }
         }
+        
 
         // multihead attention. iterate over all heads
 

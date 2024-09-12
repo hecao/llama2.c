@@ -308,6 +308,33 @@ public:
                 cout << "q k v " << state->q[10] << "," << state->key_cache[10] << "," << state->value_cache[10] << endl;
             }
 
+            // RoPE relative positional encoding: complex-valued rotate q and k in each head
+            // 另一路， PE
+            // 原理参考 https://cloud.tencent.com/developer/article/2327751
+            for (int i = 0; i < dim; i+=2) {
+                int head_dim = i % head_size;
+                float freq = 1.0f / powf(10000.0f, head_dim / (float)head_size);
+                float val = pos * freq;
+                float fcr = cosf(val);
+                float fci = sinf(val);
+                int rotn = i < kv_dim ? 2 : 1; // how many vectors? 2 = q & k, 1 = q only
+
+                if (sample_output && i == 0 && l == 0) {
+                    cout << "rotn b " <<  state->q[0] << state->key_cache[10];
+                }
+                for (int v = 0; v < rotn; v++) {
+                    Tensor& vec = v == 0 ? state->q : state->key_cache; // the vector to rotate (query or key)
+                    float v0 = vec[i];
+                    float v1 = vec[i+1];
+                    vec[i]   = v0 * fcr - v1 * fci;     // 通过旋转q 、 k 将位置信息嵌入，具体原理不太懂
+                    vec[i+1] = v0 * fci + v1 * fcr;
+                }
+
+                if (sample_output && i == 0 && l == 0) {
+                    cout << "rotn " <<  state->q[0] << state->key_cache[10] << endl;
+                }
+            }
+
         }
 
         return result;
