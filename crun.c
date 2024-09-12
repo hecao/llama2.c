@@ -272,12 +272,18 @@ float* forward(Transformer* transformer, int token, int pos) {
     float* content_row = w->token_embedding_table + token * dim;    // 直接获取embedding table的一行
     memcpy(x, content_row, dim*sizeof(*x));     // x 是输入的embedding
 
+    printf("token embedding %f, pos %d\n", x[0], pos);
+
     // forward all the layers
     for(unsigned long long l = 0; l < p->n_layers; l++) {
 
         // attention rmsnorm
         // s-> sb是attention rmsnorm结果, rms_att_weight 是从模型读取的 
         rmsnorm(s->xb, x, w->rms_att_weight + l*dim, dim);
+
+        if (l == 0) {
+            printf("xb[0] %f %f %f", s->xb[0], x[0], (w->rms_att_weight + l*dim)[0]);
+        }
 
         // key and value point to the kv cache
         int loff = l * p->seq_len * kv_dim; // kv cache layer offset for convenience

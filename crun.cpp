@@ -5,6 +5,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <cmath>
 
 using namespace std;
 
@@ -130,19 +131,19 @@ public:
     RunState() {}
 
     // current wave of activations
-    float *x; // activation at current time stamp (dim,)
-    float *xb; // same, but inside a residual branch (dim,)
-    float *xb2; // an additional buffer just for convenience (dim,)
-    float *hb; // buffer for hidden dimension in the ffn (hidden_dim,)
-    float *hb2; // buffer for hidden dimension in the ffn (hidden_dim,)
-    float *q; // query (dim,)
-    float *k; // key (dim,)
-    float *v; // value (dim,)
-    float *att; // buffer for scores/attention values (n_heads, seq_len)
-    float *logits; // output logits
+    vector<float> x; // activation at current time stamp (dim,)
+    vector<float> xb; // same, but inside a residual branch (dim,)
+    vector<float> xb2; // an additional buffer just for convenience (dim,)
+    vector<float> hb; // buffer for hidden dimension in the ffn (hidden_dim,)
+    vector<float> hb2; // buffer for hidden dimension in the ffn (hidden_dim,)
+    vector<float> q; // query (dim,)
+    vector<float> k; // key (dim,)
+    vector<float> v; // value (dim,)
+    vector<float> att; // buffer for scores/attention values (n_heads, seq_len)
+    vector<float> logits; // output logits
     // kv cache
-    float* key_cache;   // (layer, seq_len, dim)
-    float* value_cache; // (layer, seq_len, dim)
+    vector<float> key_cache;   // (layer, seq_len, dim)
+    vector<float> value_cache; // (layer, seq_len, dim)
 };
 
 class Transformer {
@@ -151,14 +152,65 @@ public:
     TransformerWeights& weigths;
     RunState state;
 
+    bool sample_output = true;
+
     Transformer(Config& cfg, TransformerWeights& w)
         :config(cfg), weigths(w) {
             state = RunState();
         }
 
-    vector<float> forward(int token, int pos) {
+    void rmsnorm(std::vector<float>& o, const std::vector<float>& x, const std::vector<float>& weight) {
+        int size = x.size();
+        // calculate sum of squares
+        float ss = 0.0f;
+        for (int j = 0; j < size; j++) {
+            ss += x[j] * x[j];
+        }
+        ss /= size;
+        ss += 1e-5f;    // 避免除0
+        ss = 1.0f / sqrt(ss);
 
+        // normalize and scale
+        o.resize(size); // 确保输出向量大小正确
+        for (int j = 0; j < size; j++) {
+            o[j] = weight[j] * (ss * x[j]);
+        }
+    }
+
+    void test() {
+        cout << "Transformer Test" << endl;
+        vector<float> out;
+        vector<float> m = {1, 2, 3};
+        vector<float> n = {4, 5, 6};
+        rmsnorm(out, m, n);
+        cout << "out " << out.at(0) << endl;
+    }
+
+    vector<float> forward(int token, int pos) {
         vector<float> result;
+
+        vector<float> & x = state.x;
+        int dim = config.dim;
+        int kv_dim = (config.dim * config.n_kv_heads) / config.n_heads;
+        int kv_mul = config.n_heads / config.n_kv_heads;
+        int hidden_dim = config.hidden_dim;
+        int head_size = dim / config.n_heads;
+
+        x = {weigths.token_embedding_table.begin() + token * dim, weigths.token_embedding_table.begin() + token * dim + dim};
+
+        if (sample_output) {
+            cout << "embeding[0]" << x.at(0) << ",";
+        }
+
+        for (auto l = 0; l < config.n_layers; l++) {
+
+            // attention norm
+            vector<float> rms_att_w = {weigths.rms_att_weight.begin() + l * dim, weigths.rms_att_weight.begin() + l * dim + dim};
+            rmsnorm(state.xb, x, rms_att_w);
+            if (sample_output && l == 0) {
+                cout << "xb[0]" << state.xb.at(0) << "," << x.at(0) << "," << rms_att_w.at(0);
+            }
+        }
 
         return result;
     }
@@ -218,6 +270,7 @@ int main(int argc, char **argv) {
     weights.loadFromFile(checkpoint_path);
 
     Transformer transformer(config, weights);
+    transformer.test();
     
     Generator g(transformer);
     g.generate("");
