@@ -113,7 +113,6 @@ void free_run_state(RunState* s) {
 void memory_map_weights(TransformerWeights *w, Config* p, float* ptr, int shared_weights) {
     int head_size = p->dim / p->n_heads;
     // make sure the multiplications below are done in 64bit to fit the parameter counts of 13B+ models
-    printf("n_layers %d, head size: %i, dim %d, n_heads %d\n", p->n_layers, head_size, p->dim, p->n_heads);
     unsigned long long n_layers = p->n_layers;
     w->token_embedding_table = ptr; //tok_embeddings
     ptr += p->vocab_size * p->dim;
@@ -152,6 +151,9 @@ void read_checkpoint(char* checkpoint, Config* config, TransformerWeights* weigh
     // 和export.py legacy_export 函数对应，读取对应Config，之后所有的二进制紧凑排列，大小在Config中已经指定时
     if (fread(config, sizeof(Config), 1, file) != 1) { exit(EXIT_FAILURE); }
     // negative vocab size is hacky way of signaling unshared weights. bit yikes.
+    
+    printf("int size %ld ", sizeof(Config));
+    printf("n_layers %d, dim %d, n_heads %d, hidden_dim %d\n", config->n_layers, config->dim, config->n_heads, config->hidden_dim);
     int shared_weights = config->vocab_size > 0 ? 1 : 0;
     config->vocab_size = abs(config->vocab_size);
     // figure out the file size

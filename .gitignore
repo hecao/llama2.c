@@ -2,3 +2,5 @@ crun
 stories*
 .vscode/
 build/
+run
+runq
