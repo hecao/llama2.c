@@ -1,2 +1,4 @@
 crun
 stories*
+.vscode/
+build/
