@@ -296,6 +296,11 @@ float* forward(Transformer* transformer, int token, int pos) {
         matmul(s->k, s->xb, w->wk + l*dim*kv_dim, dim, kv_dim);
         matmul(s->v, s->xb, w->wv + l*dim*kv_dim, dim, kv_dim);
 
+        
+        if (l == 0) {
+            printf("q k v %f %f %f", s->q[10], s->k[10], s->v[10]);
+        }
+
         // RoPE relative positional encoding: complex-valued rotate q and k in each head
         // 另一路， PE
         // 原理参考 https://cloud.tencent.com/developer/article/2327751
