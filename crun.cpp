@@ -126,9 +126,50 @@ public:
     }
 };
 
+class Tensor {
+public:
+    Tensor(int size) {
+        data.resize(size);
+        start = data.begin();
+        end = data.end();
+    }
+
+    // Function to create a span from the data
+    Tensor subTensor(int offset, int length) {
+        if (offset + length > data.size()) {
+            throw std::out_of_range("Subtensor out of range");
+        }
+        Tensor subTensor(*this);
+        subTensor.start = data.begin() + offset;
+        subTensor.end = subTensor.start + length;
+        return subTensor;
+    }
+
+    // Function to get the size of the current span
+    int size() const {
+        return std::distance(start, end);
+    }
+
+    // Access element in the span
+    float& operator[](int index) {
+        return *(start + index);
+    }
+
+    std::vector<float> data;
+    std::vector<float>::iterator start;
+    std::vector<float>::iterator end;
+
+private:
+    // Private constructor for creating sub-tensors
+    Tensor(const Tensor& parent) : data(parent.data), start(parent.start), end(parent.end) {}
+};
+
 class RunState {
 public:
-    RunState() {}
+    RunState(Config& config) {
+        key_cache = new Tensor(1);
+        value_cache = new Tensor(10);
+    }
 
     // current wave of activations
     vector<float> x; // activation at current time stamp (dim,)
@@ -142,21 +183,23 @@ public:
     vector<float> att; // buffer for scores/attention values (n_heads, seq_len)
     vector<float> logits; // output logits
     // kv cache
-    vector<float> key_cache;   // (layer, seq_len, dim)
-    vector<float> value_cache; // (layer, seq_len, dim)
+    // vector<float> key_cache;   // (layer, seq_len, dim)
+    // vector<float> value_cache; // (layer, seq_len, dim)
+    Tensor* key_cache;
+    Tensor* value_cache;
 };
 
 class Transformer {
 public:
     Config& config;
     TransformerWeights& weigths;
-    RunState state;
+    RunState* state;
 
     bool sample_output = true;
 
     Transformer(Config& cfg, TransformerWeights& w)
         :config(cfg), weigths(w) {
-            state = RunState();
+            state = new RunState(config);
         }
 
     void rmsnorm(std::vector<float>& o, const std::vector<float>& x, const std::vector<float>& weight) {
@@ -189,7 +232,7 @@ public:
     vector<float> forward(int token, int pos) {
         vector<float> result;
 
-        vector<float> & x = state.x;
+        vector<float> & x = state->x;
         int dim = config.dim;
         int kv_dim = (config.dim * config.n_kv_heads) / config.n_heads;
         int kv_mul = config.n_heads / config.n_kv_heads;
@@ -206,10 +249,12 @@ public:
 
             // attention norm
             vector<float> rms_att_w = {weigths.rms_att_weight.begin() + l * dim, weigths.rms_att_weight.begin() + l * dim + dim};
-            rmsnorm(state.xb, x, rms_att_w);
+            rmsnorm(state->xb, x, rms_att_w);
             if (sample_output && l == 0) {
-                cout << "xb[0]" << state.xb.at(0) << "," << x.at(0) << "," << rms_att_w.at(0);
+                cout << "xb[0]" << state->xb.at(0) << "," << x.at(0) << "," << rms_att_w.at(0);
             }
+
+            // kv cache https://blog.csdn.net/ningyanggege/article/details/134564203
         }
 
         return result;
