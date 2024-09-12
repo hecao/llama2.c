@@ -788,11 +788,15 @@ void generate(Transformer *transformer, Tokenizer *tokenizer, Sampler *sampler, 
     long start = 0;  // used to time our code, only initialized after first iteration
     int next;        // will store the next token in the sequence
     int token = prompt_tokens[0]; // kick off with the first token in the prompt
+
+    printf("init token %d\n", token);
     int pos = 0;     // position in the sequence
     while (pos < steps) {
 
         // forward the transformer to get logits for the next token
         float* logits = forward(transformer, token, pos);
+
+        // printf(" logits %f, pos %d\n", logits[0], pos);
 
         // advance the state machine
         if (pos < num_prompt_tokens - 1) {
@@ -949,6 +953,7 @@ void error_usage() {
 }
 
 // 入口
+// gcc -O3 -o crun crun.c -lm && ./crun stories42M.bin -t 0.0
 int main(int argc, char *argv[]) {
 
     // default parameters
@@ -1005,6 +1010,7 @@ int main(int argc, char *argv[]) {
 
     // run!
     if (strcmp(mode, "generate") == 0) {
+        printf("prompt: %s\n", prompt);
         generate(&transformer, &tokenizer, &sampler, prompt, steps);
     } else if (strcmp(mode, "chat") == 0) {
         chat(&transformer, &tokenizer, &sampler, prompt, system_prompt, steps);

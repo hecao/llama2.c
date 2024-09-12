@@ -1,3 +1,6 @@
+#ifndef CRUN_CPP
+#define CRUN_CPP
+
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -122,6 +125,77 @@ public:
     }
 };
 
+class RunState {
+public:
+    RunState() {}
+
+    // current wave of activations
+    float *x; // activation at current time stamp (dim,)
+    float *xb; // same, but inside a residual branch (dim,)
+    float *xb2; // an additional buffer just for convenience (dim,)
+    float *hb; // buffer for hidden dimension in the ffn (hidden_dim,)
+    float *hb2; // buffer for hidden dimension in the ffn (hidden_dim,)
+    float *q; // query (dim,)
+    float *k; // key (dim,)
+    float *v; // value (dim,)
+    float *att; // buffer for scores/attention values (n_heads, seq_len)
+    float *logits; // output logits
+    // kv cache
+    float* key_cache;   // (layer, seq_len, dim)
+    float* value_cache; // (layer, seq_len, dim)
+};
+
+class Transformer {
+public:
+    Config& config;
+    TransformerWeights& weigths;
+    RunState state;
+
+    Transformer(Config& cfg, TransformerWeights& w)
+        :config(cfg), weigths(w) {
+            state = RunState();
+        }
+
+    vector<float> forward(int token, int pos) {
+
+        vector<float> result;
+
+        return result;
+    }
+
+};
+
+class Generator {
+public:
+    Transformer& transformer;
+    int steps = 256;
+
+    Generator(Transformer& t): transformer(t) {
+    }
+
+    int generate(string prompt) {
+
+        int number_prompt_tokens = 0;
+        vector<int> prompt_tokens;
+
+        long start = 0;
+        int next;
+        // int token = prompt_tokens.at(0);
+        int token = 1; // BOS
+        int pos = 0;
+        while (pos < steps) {
+            vector<float> logits = transformer.forward(token, pos);
+
+            pos++;
+        }
+        return 0;
+    }
+};
+
+static void printSTH() {
+    
+}
+
 /**
  * mkdir build
  * cd build
@@ -130,6 +204,7 @@ public:
  * ./crun_test
  */
 #ifndef RUN_TESTS
+
 int main(int argc, char **argv) {
     cout << "Hello World" << endl;
 
@@ -142,7 +217,13 @@ int main(int argc, char **argv) {
     TransformerWeights weights(config);
     weights.loadFromFile(checkpoint_path);
 
+    Transformer transformer(config, weights);
+    
+    Generator g(transformer);
+    g.generate("");
     cout << "end" << endl;
 
 }
 #endif
+
+#endif // CRUN_CPP

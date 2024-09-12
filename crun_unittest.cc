@@ -9,3 +9,9 @@ TEST(Config, loadFromFile) {
     EXPECT_EQ(config.n_heads, 8);
     EXPECT_EQ(config.hidden_dim, 1376);
 }
+
+TEST(GENERATE, 1) {
+    Config c;
+    TransformerWeights w(c);
+    Transformer t(c, w);
+}

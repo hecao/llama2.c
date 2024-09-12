@@ -18,7 +18,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 
 # 执行程序
-add_executable(crun_cpp crun.h crun.cpp)
+add_executable(crun_cpp crun.cpp)
 
 enable_testing()
 
