@@ -115,8 +115,14 @@ void memory_map_weights(TransformerWeights *w, Config* p, float* ptr, int shared
     // make sure the multiplications below are done in 64bit to fit the parameter counts of 13B+ models
     unsigned long long n_layers = p->n_layers;
     w->token_embedding_table = ptr; //tok_embeddings
+
+    printf("token_embedding_table %f\n", w->token_embedding_table[0]);
+    printf("token_embedding_table %f\n", w->token_embedding_table[1]);
+
     ptr += p->vocab_size * p->dim;
+    printf("ptr %ld\n", ptr - w->token_embedding_table);
     w->rms_att_weight = ptr;    //attention_norm
+    printf("rms_att_weight %f\n", w->rms_att_weight[0]);
     ptr += n_layers * p->dim;
     w->wq = ptr;    //attention.wq
     ptr += n_layers * p->dim * (p->n_heads * head_size);
@@ -125,6 +131,7 @@ void memory_map_weights(TransformerWeights *w, Config* p, float* ptr, int shared
     w->wv = ptr;    //attention.wv
     ptr += n_layers * p->dim * (p->n_kv_heads * head_size);
     w->wo = ptr;    //attention.wo
+    printf("wo %f\n", w->wo[0]);
     ptr += n_layers * (p->n_heads * head_size) * p->dim;
     w->rms_ffn_weight = ptr;    //ffn_norm
     ptr += n_layers * p->dim;
@@ -133,12 +140,19 @@ void memory_map_weights(TransformerWeights *w, Config* p, float* ptr, int shared
     w->w2 = ptr;    //feed_forward.w2
     ptr += n_layers * p->hidden_dim * p->dim;
     w->w3 = ptr;    //feed_forward.w3
+    printf("w3 %f\n", w->w3[0]);
     ptr += n_layers * p->dim * p->hidden_dim;
     w->rms_final_weight = ptr;  //rmsnorm
+    printf("rms_final_weight %f\n", w->rms_final_weight[0]);
+    printf("rms_final_weight last %f\n", w->rms_final_weight[p->dim - 1]);
+    printf("ptr %ld", ptr - w->token_embedding_table);
     ptr += p->dim;
     ptr += p->seq_len * head_size / 2; // skip what used to be freq_cis_real (for RoPE)
     ptr += p->seq_len * head_size / 2; // skip what used to be freq_cis_imag (for RoPE)
+    
+    printf("ptr %ld", ptr - w->token_embedding_table);
     w->wcls = shared_weights ? w->token_embedding_table : ptr;
+    printf("wcls %f\n", w->wcls[0]);
 }
 
 // 根据 legacy_export 到处的二进制文件，将Config和weights以mmap的形式加载

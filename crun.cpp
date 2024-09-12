@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <vector>
 
 using namespace std;
 
@@ -8,13 +9,13 @@ class Config {
 public: 
     Config() {}
 
-    int32_t  dim;
-    int32_t  hidden_dim;
-    int32_t  n_layers;
-    int32_t  n_heads;
-    int32_t  n_kv_heads;
-    int32_t  vocab_size;
-    int32_t  seq_len;
+    int dim; // transformer dimension
+    int hidden_dim; // for ffn layers
+    int n_layers; // number of layers
+    int n_heads; // number of query heads
+    int n_kv_heads; // number of key/value heads (can be < query heads because of multiquery)
+    int vocab_size; // vocabulary size, usually 256 (byte-level)
+    int seq_len; // max sequence length
 
     int loadFromFile(const string& filename) {
         FILE *file = fopen(filename.c_str(), "rb");
@@ -45,6 +46,82 @@ public:
     }
 };
 
+class TransformerWeights {
+public:
+    TransformerWeights(const Config& config) {
+        int head_size = config.dim / config.n_heads;
+        token_embedding_table.resize(config.vocab_size * config.dim);
+        rms_att_weight.resize(config.n_layers * config.dim);
+        rms_ffn_weight.resize(config.n_layers * config.dim);
+        wq.resize(config.n_layers * config.dim * config.n_heads * head_size);
+        wk.resize(config.n_layers * config.dim * config.n_kv_heads * head_size);
+        wv.resize(config.n_layers * config.dim * config.n_kv_heads * head_size);
+        wo.resize(config.n_layers * config.n_heads * head_size * config.dim);
+        w1.resize(config.n_layers * config.hidden_dim * config.dim);
+        w2.resize(config.n_layers * config.dim * config.hidden_dim);
+        w3.resize(config.n_layers * config.hidden_dim * config.dim);
+        rms_final_weight.resize(config.dim);
+    }
+
+    vector<float> token_embedding_table;
+
+    vector<float> rms_att_weight;
+    vector<float> rms_ffn_weight;
+    
+    vector<float> wq;
+    vector<float> wk;
+    vector<float> wv;
+    vector<float> wo;
+    
+    vector<float> w1;
+    vector<float> w2;
+    vector<float> w3;
+
+    vector<float> rms_final_weight;
+    vector<float> & wcls = token_embedding_table;   // 当前固定是shared weigths的方式
+
+    bool sample_weight = false;
+
+    int loadFromFile(const string& filename) {
+        FILE *file = fopen(filename.c_str(), "rb");
+        if (!file) {
+            cerr << "Failed to open file: " << filename << endl;
+        }
+
+        fseek(file, 28, 0); //Skip Config
+        fread(token_embedding_table.data(), sizeof(float), token_embedding_table.size(), file);
+        fread(rms_att_weight.data(), sizeof(float), rms_att_weight.size(), file);
+        fread(wq.data(), sizeof(float), wq.size(), file);
+        fread(wk.data(), sizeof(float), wk.size(), file);
+        fread(wv.data(), sizeof(float), wv.size(), file);
+        fread(wo.data(), sizeof(float), wo.size(), file);
+        fread(rms_ffn_weight.data(), sizeof(float), rms_ffn_weight.size(), file);
+        fread(w1.data(), sizeof(float), w1.size(), file);
+        fread(w2.data(), sizeof(float), w2.size(), file);
+        fread(w3.data(), sizeof(float), w3.size(), file);
+        fread(rms_final_weight.data(), sizeof(float), rms_final_weight.size(), file);
+
+        if (sample_weight) {
+            cout << "token_embedding_table" << endl;
+            cout << token_embedding_table.at(0) << endl;
+            cout << token_embedding_table.at(1) << endl;
+            cout << "rms_att_weight" << endl;
+            cout << rms_att_weight.at(0) << endl;
+            cout << "wo" << endl;
+            cout << wo.at(0) << endl;
+            cout << "w3" << endl;
+            cout << w3.at(0) << endl;
+            cout << "rms_final_weight" << endl;
+            cout << rms_final_weight.at(0) << endl;
+            cout << rms_final_weight.at(rms_final_weight.size() - 1) << endl;
+            cout << "wcls" << endl;
+            cout << wcls.at(0) << endl;
+        }
+        
+        return fclose(file);
+    }
+};
+
 /**
  * mkdir build
  * cd build
@@ -58,9 +135,14 @@ int main(int argc, char **argv) {
 
     string checkpoint_path = "/home/caohe/Workspace/hecao/llama2.c/stories42M.bin";
 
-    Config c = Config();
-    c.loadFromFile(checkpoint_path);
-    c.printConfig();
+    Config config;
+    config.loadFromFile(checkpoint_path);
+    config.printConfig();
+
+    TransformerWeights weights(config);
+    weights.loadFromFile(checkpoint_path);
+
+    cout << "end" << endl;
 
 }
 #endif
