@@ -6,6 +6,9 @@
 #include <string>
 #include <vector>
 #include <cmath>
+#include <cstdio>
+#include <cerrno>
+#include <cstring>
 
 using namespace std;
 
@@ -27,13 +30,13 @@ public:
             cerr << "Failed to open file: " << filename << endl;
         }
 
-        fread(&dim, sizeof(dim), 1, file);
-        fread(&hidden_dim, sizeof(hidden_dim), 1, file);
-        fread(&n_layers, sizeof(n_layers), 1, file);
-        fread(&n_heads, sizeof(n_heads), 1, file);
-        fread(&n_kv_heads, sizeof(n_kv_heads), 1, file);
-        fread(&vocab_size, sizeof(vocab_size), 1, file);
-        fread(&seq_len, sizeof(seq_len), 1, file);
+        if (!fread(&dim, sizeof(dim), 1, file)) {return -1;};
+        if (!fread(&hidden_dim, sizeof(hidden_dim), 1, file)) {return -1;};
+        if (!fread(&n_layers, sizeof(n_layers), 1, file)) {return -1;};
+        if (!fread(&n_heads, sizeof(n_heads), 1, file)) {return -1;};
+        if (!fread(&n_kv_heads, sizeof(n_kv_heads), 1, file)) {return -1;};
+        if (!fread(&vocab_size, sizeof(vocab_size), 1, file)) {return -1;};
+        if (!fread(&seq_len, sizeof(seq_len), 1, file)) {return -1;};
         
         fclose(file);
         return 0;
@@ -277,14 +280,14 @@ public:
         }
 
     void test() {
-        cout << "Transformer Test" << endl;
+        // cout << "Transformer Test" << endl;
         Tensor m1 = Tensor(3);
         m1.data = {1, 2, 3};
         Tensor m2 = Tensor(3);
         m2.data = {4, 5, 6};
         Tensor out2 = Tensor(3);
         rmsnorm(out2, m1, m2);
-        cout << "out2 " << out2[0] << endl;
+        // cout << "out2 " << out2[0] << endl;
     }
 
     Tensor forward(int token, int pos) {
@@ -473,13 +476,53 @@ public:
     }
 };
 
+class Tokenizer {
+public:
+    int vocab_size;
+    int max_token_length;
+    vector<string> vocab;
+    vector<float> vocab_scores;
+    Tokenizer(int v): vocab_size(v) {
+        vocab.resize(vocab_size);
+    }
+
+    int loadFromFile(const string& filename) {
+        FILE *file = fopen(filename.c_str(), "rb");
+        if (!file) {
+            cerr << "Failed to open file: " << filename << endl;
+        }
+
+        int r = fread(&max_token_length, sizeof(int), 1, file);
+
+        int len;
+        float score;
+        for (int i = 0; i < vocab_size; i++) {
+            if(!fread(&score, sizeof(float), 1, file)) { return -1; };
+            if(!fread(&len, sizeof(int), 1, file)) { return -1; };
+            string tmp(len, '\0');
+            if(!fread(&tmp[0], sizeof(char), len, file)) { return -1; };
+            vocab[i] = std::move(tmp);
+        }
+
+        fclose(file);
+        return 0;
+    }
+
+    string decode(int prev_token, int token) {  // TODO
+        string result = vocab[token];
+        return result;
+    }
+
+};
+
 class Generator {
 public:
     Transformer& transformer;
     Sampler& sampler;
+    Tokenizer& tokenizer;
     int steps = 256;
 
-    Generator(Transformer& t, Sampler& s): transformer(t), sampler(s) {
+    Generator(Transformer& t, Sampler& s, Tokenizer& tk): transformer(t), sampler(s), tokenizer(tk) {
     }
 
     int generate(string prompt) {
@@ -496,7 +539,9 @@ public:
 
             // prompt 为空
             next = sampler.sample(logits);
-            cout << "token :" << next << endl;
+            // cout << "token :" << next;
+            cout << tokenizer.decode(token, next);
+            fflush(stdout);
             pos++;
             if (next == 1) {
                 break;
@@ -512,14 +557,14 @@ public:
  * cd build
  * cmake ..
  * make
- * ./crun_test
+ * ./crun_test  //test
+ * ./crun_cpp //run
  */
 #ifndef RUN_TESTS
 
 int main(int argc, char **argv) {
-    cout << "Hello World" << endl;
-
     string checkpoint_path = "/home/caohe/Workspace/hecao/llama2.c/stories42M.bin";
+    string tokenizer_path = "/home/caohe/Workspace/hecao/llama2.c/tokenizer.bin";
 
     Config config;
     config.loadFromFile(checkpoint_path);
@@ -530,12 +575,14 @@ int main(int argc, char **argv) {
 
     Transformer transformer(config, weights);
     transformer.test();
+
+    Tokenizer tokenizer(config.vocab_size);
+    tokenizer.loadFromFile(tokenizer_path);
     
-    Sampler Sampler(config);
-    Generator g(transformer, Sampler);
+    Sampler sampler(config);
+    Generator g(transformer, sampler, tokenizer);
     g.generate("");
     cout << "end" << endl;
-
 }
 #endif
 
