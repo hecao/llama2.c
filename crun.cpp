@@ -288,8 +288,6 @@ public:
     }
 
     Tensor forward(int token, int pos) {
-
-        cout << "token " << token << " pos " << pos << endl;
         Tensor& x = state->x;
         int dim = config.dim;
         int kv_dim = (config.dim * config.n_kv_heads) / config.n_heads;
@@ -428,7 +426,6 @@ public:
                 cout << "x2b[0]" << state->xb[0] << "," << x[0] << "," << weigths.rms_att_weight[0] << endl;
             }
 
-
             matmul(state->xb, state->hb, weigths.w2.subTensor(l* dim * hidden_dim, hidden_dim), hidden_dim, dim);
 
             for (int i = 0; i < dim; i++) {
@@ -490,7 +487,6 @@ public:
         int number_prompt_tokens = 0;
         vector<int> prompt_tokens = {1};
 
-
         long start = 0;
         int next;
         int token = prompt_tokens.at(0); // BOS
@@ -510,10 +506,6 @@ public:
         return 0;
     }
 };
-
-static void printSTH() {
-    
-}
 
 /**
  * mkdir build
