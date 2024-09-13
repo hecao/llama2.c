@@ -57,15 +57,17 @@ public:
         data.resize(size);
         start = data.begin();
         end = data.end();
+        fill(start, end, 0.0f);
     }
 
-    void subTensor(int offset, int length) {
+    Tensor& subTensor(int offset, int length) {
         // cout << offset << "|" << length << "|" << data.size() << endl;
         if (offset + length > data.size()) {
             throw std::out_of_range("Subtensor out of range");
         }
         start = data.begin() + offset;
         end = start + length;
+        return *this;
     }
 
     void reset() {
@@ -188,8 +190,8 @@ public:
         q(Tensor(c.dim)),
         // k(Tensor(c.dim)),
         // v(Tensor(c.dim)),
-        att(Tensor(c.dim)),
-        logits(Tensor(c.dim)),
+        att(Tensor(c.n_heads * c.seq_len)),
+        logits(Tensor(c.vocab_size)),
         key_cache(Tensor(c.n_layers*c.seq_len*c.dim)), 
         value_cache(Tensor(c.n_layers*c.seq_len*c.dim)) {
     }
@@ -241,6 +243,26 @@ static void matmul(Tensor& xout, Tensor& x, Tensor& w, int n, int d) {
     }
 }
 
+static void softmax(Tensor& x, int size) {
+    // find max value (for numerical stability)
+    float max_val = x[0];
+    for (int i = 1; i < size; i++) {
+        if (x[i] > max_val) {
+            max_val = x[i];
+        }
+    }
+    // exp and sum
+    float sum = 0.0f;
+    for (int i = 0; i < size; i++) {
+        x[i] = expf(x[i] - max_val);
+        sum += x[i];
+    }
+    // normalize
+    for (int i = 0; i < size; i++) {
+        x[i] /= sum;
+    }
+}
+
 class Transformer {
 public:
     Config& config;
@@ -265,9 +287,9 @@ public:
         cout << "out2 " << out2[0] << endl;
     }
 
-    vector<float> forward(int token, int pos) {
-        vector<float> result;
+    Tensor forward(int token, int pos) {
 
+        cout << "token " << token << " pos " << pos << endl;
         Tensor& x = state->x;
         int dim = config.dim;
         int kv_dim = (config.dim * config.n_kv_heads) / config.n_heads;
@@ -277,7 +299,6 @@ public:
 
         weigths.token_embedding_table.subTensor(token * dim, dim);
         x.copyFrom(weigths.token_embedding_table);
-        weigths.token_embedding_table.reset();
 
         if (sample_output) {
             cout << "embeding[0]" << x[0] << ",";
@@ -288,7 +309,7 @@ public:
             // attention norm
             weigths.rms_att_weight.subTensor(l * dim, dim);
             rmsnorm(state->xb, x, weigths.rms_att_weight);
-            if (sample_output && l == 0) {
+            if (sample_output && l == 1) {
                 cout << "xb[0]" << state->xb[0] << "," << x[0] << "," << weigths.rms_att_weight[0] << endl;
             }
             // kv cache https://blog.csdn.net/ningyanggege/article/details/134564203\
@@ -304,7 +325,7 @@ public:
             matmul(state->key_cache, state->xb, weigths.wk, dim, kv_dim);
             matmul(state->value_cache, state->xb, weigths.wv, dim, kv_dim);
 
-            if (sample_output && l == 0) {
+            if (sample_output && l == 1) {
                 cout << "q k v " << state->q[10] << "," << state->key_cache[10] << "," << state->value_cache[10] << endl;
             }
 
@@ -326,7 +347,7 @@ public:
                     Tensor& vec = v == 0 ? state->q : state->key_cache; // the vector to rotate (query or key)
                     float v0 = vec[i];
                     float v1 = vec[i+1];
-                    vec[i]   = v0 * fcr - v1 * fci;     // 通过旋转q 、 k 将位置信息嵌入，具体原理不太懂
+                    vec[i]   = v0 * fcr - v1 * fci;     // 通过旋转q 、 k 将位置信息嵌入
                     vec[i+1] = v0 * fci + v1 * fcr;
                 }
 
@@ -335,9 +356,98 @@ public:
                 }
             }
 
+            // multihead attention. iterate over all heads
+            // 参考 https://blog.csdn.net/v_JULY_v/article/details/130090649 中 1.3.1 和 1.3.2
+            for (int h = 0; h < config.n_heads; h++) {
+                state->q.subTensor(h * head_size, head_size);
+                state->att.subTensor(h * config.seq_len, config.seq_len);
+
+                for (int t = 0; t <= pos; t++) {
+                    state->key_cache.subTensor(loff + t * kv_dim + (h / kv_mul) * head_size, head_size);
+                    float score = 0.0f;
+                    for (int i = 0; i < head_size; i++) {
+                        score += state->q[i] * state->key_cache[i];
+                    }
+                    score /= sqrtf(head_size);
+                    // cout << pos << " " << h << " " << t << " " << score << " " << state->q[0] << " " << state->key_cache[0] << endl;
+                    state->att[t] = score;
+                }
+
+                softmax(state->att, pos + 1);
+
+                state->xb.subTensor(h * head_size, head_size);
+                fill(state->xb.start, state->xb.end, 0.0f);
+                for (int t = 0; t <= pos; t++) {
+                    state->value_cache.subTensor(loff + t * kv_dim + (h / kv_mul) * head_size, head_size);
+                    float a = state->att[t];
+                    for (int i = 0; i < head_size; i++) {
+                        state->xb[i] += a * state->value_cache[i];
+                    }
+                    // cout << "mla2 " << pos << " " << h << " " << t << " " << a << " " << state->xb[0] << endl;
+                }
+
+            }
+
+            state->q.reset();
+            state->xb.reset();
+            if (sample_output && l == 0) {
+                cout << "after mla: " << state->xb[0] << "," << x[0] << "," << weigths.rms_att_weight[0] << endl;
+            }
+
+            matmul(state->xb2, state->xb, weigths.wo.subTensor(l * dim * dim, dim * dim), dim, dim);
+
+            if (sample_output) {
+                cout << "" << endl;
+                cout << "xb2 " << state->xb2[10] << endl;
+            }
+
+            // 残差
+            for (int i = 0; i < dim; i++) {
+                x[i] += state->xb2[i];
+            }
+            if (sample_output) {
+                cout << "after residual " << x[10] << endl;
+            }
+
+            // ffn rmsnorm
+            rmsnorm(state->xb, x, weigths.rms_ffn_weight.subTensor(l * dim, dim));
+
+            // ffn
+            matmul(state->hb, state->xb, weigths.w1.subTensor(l * dim * hidden_dim, hidden_dim), dim, hidden_dim);
+            matmul(state->hb2, state->xb, weigths.w3.subTensor(l * dim * hidden_dim, hidden_dim), dim, hidden_dim);
+
+            // SwiGLU
+            for (int i = 0; i < hidden_dim; i++) {
+                float val = state-> hb[i];
+                val *= (1.0f / (1.0f + expf(-val)));
+                val *= state->hb2[i];
+                state->hb[i] = val;
+            }
+
+            if (sample_output && (l == 0 || l == 1)) {
+                cout << "x2b[0]" << state->xb[0] << "," << x[0] << "," << weigths.rms_att_weight[0] << endl;
+            }
+
+
+            matmul(state->xb, state->hb, weigths.w2.subTensor(l* dim * hidden_dim, hidden_dim), hidden_dim, dim);
+
+            for (int i = 0; i < dim; i++) {
+                x[i] += state->xb[i];
+            }
+            
+            if (sample_output && (l == 0 || l == 1)) {
+                cout << "x3b[0]" << state->xb[0] << "," << x[0] << "," << weigths.rms_att_weight[0] << endl;
+            }
+
         }
 
-        return result;
+        rmsnorm(x, x, weigths.rms_final_weight);
+
+        // cout << state->logits.size() << " " << x.size() << " " << weigths.wcls.size() << " " << config.dim << " " << config.vocab_size << endl;
+        state->logits.reset();
+        weigths.wcls.reset();
+        matmul(state->logits, x, weigths.wcls, config.dim, config.vocab_size);
+        return state->logits;
     }
 
 };
@@ -361,9 +471,13 @@ public:
         int token = 1; // BOS
         int pos = 0;
         while (pos < steps) {
-            vector<float> logits = transformer.forward(token, pos);
-
+            transformer.forward(token, pos);
             pos++;
+            if (pos == 0) {
+                token = 9038;
+            } else {
+                token = 2501;
+            }
         }
         return 0;
     }

@@ -281,7 +281,7 @@ float* forward(Transformer* transformer, int token, int pos) {
         // s-> sb是attention rmsnorm结果, rms_att_weight 是从模型读取的 
         rmsnorm(s->xb, x, w->rms_att_weight + l*dim, dim);
 
-        if (l == 0) {
+        if (l == 1) {
             printf("xb[0] %f %f %f", s->xb[0], x[0], (w->rms_att_weight + l*dim)[0]);
         }
 
@@ -297,7 +297,7 @@ float* forward(Transformer* transformer, int token, int pos) {
         matmul(s->v, s->xb, w->wv + l*dim*kv_dim, dim, kv_dim);
 
         
-        if (l == 0) {
+        if (l == 1) {
             printf("q k v %f %f %f", s->q[10], s->k[10], s->v[10]);
         }
 
@@ -352,6 +352,7 @@ float* forward(Transformer* transformer, int token, int pos) {
                 score /= sqrtf(head_size);
                 // save the score to the attention buffer
                 att[t] = score;
+                // printf("mla: %d %d %d %f %f %f\n", pos, h, t, score, q[0], k[0]);
             }
 
             // softmax the scores to get attention weights, from 0..pos inclusively
@@ -369,16 +370,23 @@ float* forward(Transformer* transformer, int token, int pos) {
                 for (int i = 0; i < head_size; i++) {
                     xb[i] += a * v[i];
                 }
+                // printf("mla2: %d %d %d %f %f\n", pos, h, t, a, xb[0]);
             }
+        }
+        if (l == 0) {
+            printf("\nafter mla: %f %f %f", s->xb[0], x[0], (w->rms_att_weight + l*dim)[0]);
         }
 
         // final matmul to get the output of the attention
         matmul(s->xb2, s->xb, w->wo + l*dim*dim, dim, dim);         // wo 线性变换层的权重
+        printf("\nxb2 %f\n", s->xb2[10]);
 
         // residual connection back into x      残差
         for (int i = 0; i < dim; i++) {
             x[i] += s->xb2[i];
         }
+
+        printf(" after residual %f ", x[10]);
 
         // ffn rmsnorm
         rmsnorm(s->xb, x, w->rms_ffn_weight + l*dim, dim);
@@ -399,12 +407,20 @@ float* forward(Transformer* transformer, int token, int pos) {
             s->hb[i] = val;
         }
 
+        if (l == 0 || l == 1) {
+            printf("x2b[0] %f %f %f\n", s->xb[0], x[0], (w->rms_att_weight + l*dim)[0]);
+        }
+
         // final matmul to get the output of the ffn
         matmul(s->xb, s->hb, w->w2 + l*dim*hidden_dim, hidden_dim, dim);
 
         // residual connection
         for (int i = 0; i < dim; i++) {
             x[i] += s->xb[i];
+        }
+        
+        if (l == 0 || l == 1) {
+            printf("x3b[0] %f %f %f\n", s->xb[0], x[0], (w->rms_att_weight + l*dim)[0]);
         }
     }
 
@@ -829,6 +845,7 @@ void generate(Transformer *transformer, Tokenizer *tokenizer, Sampler *sampler, 
         }
         pos++;
 
+        printf("next %d", next);
         // data-dependent terminating condition: the BOS (=1) token delimits sequences
         if (next == 1) { break; }
 
