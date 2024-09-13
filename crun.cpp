@@ -7,8 +7,6 @@
 #include <vector>
 #include <cmath>
 #include <cstdio>
-#include <cerrno>
-#include <cstring>
 
 using namespace std;
 
@@ -60,7 +58,6 @@ public:
         data.resize(size);
         start = data.begin();
         end = data.end();
-        fill(start, end, 0.0f);
     }
 
     Tensor& subTensor(int offset, int length) {
@@ -191,8 +188,6 @@ public:
         hb(Tensor(c.hidden_dim)),
         hb2(Tensor(c.hidden_dim)),
         q(Tensor(c.dim)),
-        // k(Tensor(c.dim)),
-        // v(Tensor(c.dim)),
         att(Tensor(c.n_heads * c.seq_len)),
         logits(Tensor(c.vocab_size)),
         key_cache(Tensor(c.n_layers*c.seq_len*c.dim)), 
@@ -206,8 +201,6 @@ public:
     Tensor hb; // buffer for hidden dimension in the ffn (hidden_dim,)
     Tensor hb2; // buffer for hidden dimension in the ffn (hidden_dim,)
     Tensor q; // query (dim,)
-    // Tensor k; // key (dim,)
-    // Tensor v; // value (dim,)
     Tensor att; // buffer for scores/attention values (n_heads, seq_len)
     Tensor logits; // output logits
     // kv cache
@@ -313,8 +306,8 @@ public:
             if (sample_output && l == 1) {
                 cout << "xb[0]" << state->xb[0] << "," << x[0] << "," << weigths.rms_att_weight[0] << endl;
             }
-            // kv cache https://blog.csdn.net/ningyanggege/article/details/134564203\
 
+            // kv cache https://blog.csdn.net/ningyanggege/article/details/134564203
             int loff = l * config.seq_len * kv_dim;
             state->key_cache.subTensor(loff + pos * kv_dim, kv_dim);
             state->value_cache.subTensor(loff + pos * kv_dim, kv_dim);
@@ -342,7 +335,7 @@ public:
                 int rotn = i < kv_dim ? 2 : 1; // how many vectors? 2 = q & k, 1 = q only
 
                 if (sample_output && i == 0 && l == 0) {
-                    cout << "rotn b " <<  state->q[0] << state->key_cache[10];
+                    cout << "rotn before " <<  state->q[0] << state->key_cache[10];
                 }
                 for (int v = 0; v < rotn; v++) {
                     Tensor& vec = v == 0 ? state->q : state->key_cache; // the vector to rotate (query or key)
@@ -353,7 +346,7 @@ public:
                 }
 
                 if (sample_output && i == 0 && l == 0) {
-                    cout << "rotn " <<  state->q[0] << state->key_cache[10] << endl;
+                    cout << "rotn after" <<  state->q[0] << state->key_cache[10] << endl;
                 }
             }
 
@@ -443,7 +436,6 @@ public:
 
         rmsnorm(x, x, weigths.rms_final_weight);
 
-        // cout << state->logits.size() << " " << x.size() << " " << weigths.wcls.size() << " " << config.dim << " " << config.vocab_size << endl;
         state->logits.reset();
         weigths.wcls.reset();
         matmul(state->logits, x, weigths.wcls, config.dim, config.vocab_size);
@@ -561,7 +553,6 @@ public:
  * ./crun_cpp //run
  */
 #ifndef RUN_TESTS
-
 int main(int argc, char **argv) {
     string checkpoint_path = "/home/caohe/Workspace/hecao/llama2.c/stories42M.bin";
     string tokenizer_path = "/home/caohe/Workspace/hecao/llama2.c/tokenizer.bin";
