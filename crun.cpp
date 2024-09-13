@@ -269,7 +269,7 @@ public:
     TransformerWeights& weigths;
     RunState* state;
 
-    bool sample_output = true;
+    bool sample_output = false;
 
     Transformer(Config& cfg, TransformerWeights& w)
         :config(cfg), weigths(w) {
@@ -452,32 +452,60 @@ public:
 
 };
 
+class Sampler {
+public:
+    int vocab_size;
+    Sampler(Config& c): vocab_size(c.vocab_size) {
+
+    }
+    int sample(Tensor& tensor) {
+        return sample_argmax(tensor, vocab_size);   // 目前只实现 temperature = 0的情况
+    }
+
+    int sample_argmax(Tensor& tensor, int n) {
+        // return the index that has the highest probability
+        int max_i = 0;
+        float max_p = tensor[0];
+        for (int i = 1; i < n; i++) {
+            if (tensor[i] > max_p) {
+                max_i = i;
+                max_p = tensor[i];
+            }
+        }
+        return max_i;
+    }
+};
+
 class Generator {
 public:
     Transformer& transformer;
+    Sampler& sampler;
     int steps = 256;
 
-    Generator(Transformer& t): transformer(t) {
+    Generator(Transformer& t, Sampler& s): transformer(t), sampler(s) {
     }
 
     int generate(string prompt) {
 
         int number_prompt_tokens = 0;
-        vector<int> prompt_tokens;
+        vector<int> prompt_tokens = {1};
+
 
         long start = 0;
         int next;
-        // int token = prompt_tokens.at(0);
-        int token = 1; // BOS
+        int token = prompt_tokens.at(0); // BOS
         int pos = 0;
         while (pos < steps) {
-            transformer.forward(token, pos);
+            Tensor logits = transformer.forward(token, pos);
+
+            // prompt 为空
+            next = sampler.sample(logits);
+            cout << "token :" << next << endl;
             pos++;
-            if (pos == 0) {
-                token = 9038;
-            } else {
-                token = 2501;
+            if (next == 1) {
+                break;
             }
+            token = next;
         }
         return 0;
     }
@@ -511,7 +539,8 @@ int main(int argc, char **argv) {
     Transformer transformer(config, weights);
     transformer.test();
     
-    Generator g(transformer);
+    Sampler Sampler(config);
+    Generator g(transformer, Sampler);
     g.generate("");
     cout << "end" << endl;
 

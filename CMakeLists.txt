@@ -15,7 +15,7 @@ FetchContent_MakeAvailable(googletest)
 # 设置 C++ 标准
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
-
+set(CMAKE_CXX_FLAGS "-O3 -Wall -Wextra")
 
 # 执行程序
 add_executable(crun_cpp crun.cpp)
